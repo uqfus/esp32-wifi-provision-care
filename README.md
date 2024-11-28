@@ -10,10 +10,11 @@ Wi-Fi provisioning page shows Wi-Fi routers near to ESP32.
 
 How to use.
 
-Append
+Append to your idf_component.yml file
+```
   esp32-wifi-provision-care:
     git: https://github.com/uqfus/esp32-wifi-provision-care.git
-to your idf_component.yml file
+```
 
 Append code to your project
 ```
