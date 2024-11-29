@@ -117,7 +117,7 @@ static esp_err_t savewifi_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-// HTTP /scanap - WiFi  page
+// HTTP /scanap - Wi-Fi page
 static esp_err_t scanap_get_handler(httpd_req_t *req)
 {
     uint16_t number = 15;
@@ -147,6 +147,87 @@ static esp_err_t scanap_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// todo CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE handling
+// HTTP /updateota - Wi-Fi page
+static esp_err_t updateota_post_handler(httpd_req_t *req)
+{
+    esp_err_t err;
+    /* update handle : set by esp_ota_begin(), must be freed via esp_ota_end() */
+    esp_ota_handle_t update_handle = 0 ;
+
+    ESP_LOGI(TAG, "Starting update over the air.");
+
+    const esp_partition_t *configured = esp_ota_get_boot_partition();
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (configured != running) {
+        ESP_LOGW(TAG, "Configured OTA boot partition at offset 0x%08"PRIx32", but running from offset 0x%08"PRIx32,
+                 configured->address, running->address);
+        ESP_LOGW(TAG, "(This can happen if either the OTA boot data or preferred boot image become corrupted somehow.)");
+    }
+    esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
+    if ( req->content_len > update_partition->size ) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Firmware too big.");
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "Begin writing %d bytes firmware to partition '%s'.", req->content_len,  update_partition->label);
+
+    err = esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &update_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ota_begin failed (%s)", esp_err_to_name(err));
+        esp_ota_abort(update_handle);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_begin failed.");
+        return ESP_FAIL;
+    }
+
+    /* Retrieve the pointer to scratch buffer for temporary storage */
+    char *buf = ((struct file_server_data *)req->user_ctx)->scratch;
+    int received;
+    int remaining = req->content_len;
+
+    while (remaining > 0) {
+        ESP_LOGI(TAG, "Remaining size : %d", remaining);
+        if ( (received = httpd_req_recv(req, buf, MIN(remaining, SCRATCH_BUFSIZE))) <= 0 ) {
+            if (received == HTTPD_SOCK_ERR_TIMEOUT) {
+                /* Retry if timeout occurred */
+                continue;
+            }
+            ESP_LOGE(TAG, "Firmware reception failed!");
+            /* Respond with 500 Internal Server Error */
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to receive firmware.");
+            return ESP_FAIL;
+        }
+
+        err = esp_ota_write( update_handle, (const void *)buf, received);
+        if (err != ESP_OK) {
+            esp_ota_abort(update_handle);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_write failed.");
+            return ESP_FAIL;
+        }
+        remaining -= received;
+    }
+
+    err = esp_ota_end(update_handle);
+    if (err != ESP_OK) {
+        if (err == ESP_ERR_OTA_VALIDATE_FAILED) {
+            ESP_LOGE(TAG, "Image validation failed, image is corrupted");
+        } else {
+            ESP_LOGE(TAG, "esp_ota_end failed (%s)!", esp_err_to_name(err));
+        }
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_end failed.");
+        return ESP_FAIL;
+    }
+    err = esp_ota_set_boot_partition(update_partition);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ota_set_boot_partition failed (%s)!", esp_err_to_name(err));
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_set_boot_partition failed.");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Restart to new firmware.");
+    esp_restart();
+    return ESP_OK;
+}
+
 static httpd_handle_t start_webserver(void)
 {
     httpd_handle_t server = NULL;
@@ -168,6 +249,8 @@ static httpd_handle_t start_webserver(void)
         httpd_register_uri_handler(server, &savewifi_uri);
         const httpd_uri_t nvserase_uri =  { .uri = "/nvserase", .method = HTTP_GET, .handler = nvserase_get_handler };
         httpd_register_uri_handler(server, &nvserase_uri);
+        const httpd_uri_t updateota_uri =  { .uri = "/updateota", .method = HTTP_POST, .handler = updateota_post_handler };
+        httpd_register_uri_handler(server, &updateota_uri);
         httpd_register_err_handler(server, HTTPD_404_NOT_FOUND, http_404_error_handler);
     }
     return server;
@@ -332,6 +415,8 @@ void wifi_provision_care(char *ap_ssid_name)
     }
     ESP_LOGI(TAG, "Wi-Fi credentials loaded. SSID:'%s' Password:hidden", wifi_config.sta.ssid);
 
+    // Disabling any Wi-Fi power save mode, this allows best throughput
+//    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_wifi_event_handler, ap_ssid_name_copy));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,   ESP_EVENT_ANY_ID, &sta_ip_event_handler, NULL));

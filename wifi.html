@@ -185,7 +185,7 @@ td {
         </td><td>Provisioning</td></tr></tbody>
         </table>
 
-        <h2>Select AP to connect to:</h2>
+        <h2>Select AP or enter <button onclick='javascript:openConnectModal("");'>manually</button></h2>
 
         <table>
             <tbody id='ssid-list'>
@@ -197,10 +197,10 @@ td {
                 </tr>
             </tbody>
         </table>
-        <button onclick='javascript:openConnectModal("");'>&#9997;</button>
-        <button onclick='javascript:erasenvs();'>Erase NVS</button>
+        <button onclick='javascript:openErasenvsModal();'>Erase NVS</button>
+        <button onclick='javascript:openOtaUpdateModal();'>OTA Update</button>
 
-        <!-- Modal content -->
+        <!-- Connect modal content -->
         <div id='connect-modal' class='modal'>
             <div class='modal-content'>
                 <div class='modal-header'>
@@ -219,6 +219,38 @@ td {
                 </div>
             </div>
         </div>
+        <!-- Erase NVS modal content -->
+        <div id='erasenvs-modal' class='modal'>
+            <div class='modal-content'>
+                <div class='modal-header'>
+                    <span class='close' onclick='javascript:closeErasenvsModal();'>&times;</span>
+                    <h1>Erase NVS</h1>
+                </div>
+                <div style='margin: 15px;'>
+                    <h2>You are about to erase ESP32 NVS partition!</h2>
+                    <hr>
+                    <button style='background: #df0c24;' onclick='javascript:erasenvs();'>Confirm</button>
+                    <button style='background: #adb5bd;' onclick='javascript:closeErasenvsModal();'>Cancel</button>
+                </div>
+            </div>
+        </div>
+        <!-- OTA Update modal content -->
+        <div id='otaupdate-modal' class='modal'>
+            <div class='modal-content'>
+                <div class='modal-header'>
+                    <span class='close' onclick='javascript:closeOtaUpdateModal();'>&times;</span>
+                    <h1>OTA Update</h1>
+                </div>
+                <div style='margin: 15px;'>
+                    <h2>Upload new firmware over the air.</h2>
+                    <input id='firmware' type="file" style="width:90%;">
+                    <h2 id='ota-status'>Ready.</h2>
+                    <hr>
+                    <button onclick='javascript:otaUpdate();'>Upload</button>
+                    <button style='background: #adb5bd;' onclick='javascript:closeOtaUpdateModal();'>Cancel</button>
+                </div>
+            </div>
+        </div>
     </div> <!-- class portal -->
 
     <script>
@@ -227,10 +259,21 @@ td {
             document.getElementById('wifi-password').value = '';
             document.getElementById('connect-modal').style.display = 'block';
         };
-
         function closeConnectModal() {
             document.getElementById('connect-modal').style.display = 'none';
         };
+        function openErasenvsModal() {
+            document.getElementById('erasenvs-modal').style.display = 'block';
+        }
+        function closeErasenvsModal() {
+            document.getElementById('erasenvs-modal').style.display = 'none';
+        }
+        function openOtaUpdateModal() {
+            document.getElementById('otaupdate-modal').style.display = 'block';
+        }
+        function closeOtaUpdateModal() {
+            document.getElementById('otaupdate-modal').style.display = 'none';
+        }
 
         document.onreadystatechange = function () {
             if (document.readyState === 'interactive') updateSSIDList();
@@ -274,14 +317,41 @@ td {
                     if (response.ok) {
                         location.reload();
                     } else {
-                        console.error('Failed to reset WiFi settings');
+                        console.error('Failed to reset Wi-Fi settings');
                     }
                 })
                 .catch(error => console.error('Fetch error:', error));
             closeConnectModal();
         }
         function erasenvs() {
-            fetch( '/nvserase' )
+            fetch( '/nvserase' );
+            closeErasenvsModal();
+        }
+        function otaUpdate() {
+            var fileInput = document.getElementById("firmware").files;
+            if (fileInput.length == 0) {
+                alert("No file selected!");
+            } else {
+                document.getElementById("firmware").disabled = true;
+                var fwfile = fileInput[0];
+                var xhttp = new XMLHttpRequest();
+                 xhttp.onload = function () {
+                    if (xhttp.status == 200) {
+                        document.getElementById("ota-status").value = xhttp.responseText;
+                    } else if (xhttp.status == 0) {
+                        document.getElementById("ota-status").value = 'Error. Unsent.';
+                    } else {
+                        alert(xhttp.status + ' Error!\n' + xhttp.responseText);
+                    }
+                };
+                xhttp.onprogress = function () {
+                    var percent = Math.round( 100 * xhttp.loaded / xhttp.total );
+                    document.getElementById("ota-status").value = 'Progress ' + percent + '%';
+                };
+
+                xhttp.open('POST', '/updateota', true);
+                xhttp.send(fwfile);
+            }
         }
     </script>
 </body>
