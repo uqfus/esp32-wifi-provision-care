@@ -48,17 +48,17 @@ static esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
     httpd_resp_set_hdr(req, "Location", root_uri);
     // iOS requires content in the response to detect a captive portal, simply redirecting is not sufficient.
     httpd_resp_send(req, "Redirect to the captive portal.", HTTPD_RESP_USE_STRLEN);
-    ESP_LOGI(TAG, "Redirecting to WiFi provision page %s", root_uri );
+    ESP_LOGI(TAG, "Redirecting to Wi-Fi provision page %s", root_uri );
     return ESP_OK;
 }
 
 // HTTP / - WiFi provision page
 static esp_err_t root_get_handler(httpd_req_t *req)
 {
+    ESP_LOGI(TAG, "Serve root.");
     extern const char wifi_start[] asm("_binary_wifi_html_gz_start");
     extern const char wifi_end[] asm("_binary_wifi_html_gz_end");
     const uint32_t wifi_len = wifi_end - wifi_start;
-    ESP_LOGI(TAG, "Serve root");
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     httpd_resp_send(req, wifi_start, wifi_len);
@@ -68,11 +68,11 @@ static esp_err_t root_get_handler(httpd_req_t *req)
 // HTTP /nvserase - Perform NVS erase
 static esp_err_t nvserase_get_handler(httpd_req_t *req)
 {
-    ESP_LOGI(TAG, "Perform NVS erase.");
+    ESP_LOGI(TAG, "Perform NVS full erase.");
     ESP_ERROR_CHECK(nvs_flash_erase());
     ESP_ERROR_CHECK(nvs_flash_init());
     httpd_resp_set_type(req, "text/html");
-    httpd_resp_send(req, "OK", 2);
+    httpd_resp_send(req, "Perform NVS full erase.", HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
@@ -86,27 +86,23 @@ static esp_err_t savewifi_get_handler(httpd_req_t *req)
         buf = malloc(buf_len);
         if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
             char param[65];
-            wifi_config_t wifi_cfg = {};
-            if (httpd_query_key_value(buf, "ssid", param, sizeof(param)) == ESP_OK) {
-                ESP_LOGI(TAG, "ssid=%s", param);
-                strncpy((char *)wifi_cfg.sta.ssid, param, sizeof(wifi_cfg.sta.ssid));
+            wifi_config_t wifi_cfg = { 0 };
+            if ( httpd_query_key_value( buf, "ssid", param, sizeof(param) ) == ESP_OK ) {
+                strncpy( (char *)wifi_cfg.sta.ssid, param, sizeof(wifi_cfg.sta.ssid) );
             }
-            if (httpd_query_key_value(buf, "password", param, sizeof(param)) == ESP_OK) {
-                ESP_LOGI(TAG, "password=%s", param);
-                strncpy((char *)wifi_cfg.sta.password, param, sizeof(wifi_cfg.sta.password));
+            if ( httpd_query_key_value( buf, "password", param, sizeof(param) ) == ESP_OK ) {
+                strncpy( (char *)wifi_cfg.sta.password, param, sizeof(wifi_cfg.sta.password) );
             }
 
-            if (strlen((char *)wifi_cfg.sta.ssid) > 0 && strlen((char *)wifi_cfg.sta.password)) {
+            if ( strlen((char *)wifi_cfg.sta.ssid) > 0 && strlen((char *)wifi_cfg.sta.password) > 0 ) {
                 httpd_resp_set_type(req, "text/html");
                 if (esp_wifi_set_storage(WIFI_STORAGE_FLASH) == ESP_OK &&
                         esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg) == ESP_OK) {
-                    const char wifi_configured[] = "<h1>Connecting...</h1>";
-                    ESP_LOGI(TAG, "WiFi settings accepted!");
-                    httpd_resp_send(req, wifi_configured, strlen(wifi_configured));
+                    ESP_LOGI(TAG, "Wi-Fi settings saved, SSID: '%s', password: '%s'.", (char *)wifi_cfg.sta.ssid, (char *)wifi_cfg.sta.password );
+                    httpd_resp_send(req, "Wi-Fi settings saved.", HTTPD_RESP_USE_STRLEN);
                 } else {
-                    const char wifi_config_failed[] = "<h1>Failed to configure WiFi settings</h1>";
-                    ESP_LOGE(TAG, "Failed to set WiFi config to flash");
-                    httpd_resp_send(req, wifi_config_failed, strlen(wifi_config_failed));
+                    ESP_LOGE(TAG, "Failed to write Wi-Fi config to flash.");
+                    httpd_resp_send(req, "Failed to write Wi-Fi config to flash.", HTTPD_RESP_USE_STRLEN);
                 }
                 free(buf);
                 esp_restart();
@@ -117,7 +113,7 @@ static esp_err_t savewifi_get_handler(httpd_req_t *req)
     }
 
     httpd_resp_set_type(req, "text/html");
-    httpd_resp_send(req, "Error", HTTPD_RESP_USE_STRLEN);
+    httpd_resp_send(req, "Error. Wi-Fi settings incorrect.", HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 
@@ -159,7 +155,7 @@ static httpd_handle_t start_webserver(void)
     config.lru_purge_enable = true;
 
     // Start the httpd server
-    ESP_LOGI(TAG, "Starting server on port: %d", config.server_port);
+    ESP_LOGI(TAG, "Starting http server on port: %d", config.server_port);
     if (httpd_start(&server, &config) == ESP_OK) {
         // Set URI handlers
         const httpd_uri_t favicon_uri = { .uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_get_handler };
@@ -186,7 +182,6 @@ static void wifi_init_softap(void *pvParameters)
     // Initialize SoftAP with default config
     esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
 
-    // Open SoftAP SSID with TAG+MAC
     wifi_config_t wifi_config = {
         .ap = {
             .ssid = "",
@@ -196,8 +191,10 @@ static void wifi_init_softap(void *pvParameters)
         },
     };
     if ( pvParameters != NULL && strlen( (char *)pvParameters ) > 0 ) {
+        // Open SoftAP SSID with provided name
         strncpy((char *)wifi_config.ap.ssid, (char *)pvParameters, sizeof(wifi_config.ap.ssid));
     } else {
+        // Open SoftAP SSID with TAG+MAC
         uint8_t ap_mac[6];
         ESP_ERROR_CHECK(esp_read_mac(ap_mac, ESP_MAC_EFUSE_FACTORY));
         sprintf((char *)wifi_config.ap.ssid, "%s-%02X%02X", TAG, ap_mac[4], ap_mac[5]);
@@ -212,7 +209,7 @@ static void wifi_init_softap(void *pvParameters)
     ESP_ERROR_CHECK(esp_netif_set_ip_info(ap_netif, &ip_info));
     ESP_ERROR_CHECK(esp_netif_dhcps_start(ap_netif));
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA)); // STA -> APSTA
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM)); // Do not use NVS for SoftAP config
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -220,10 +217,10 @@ static void wifi_init_softap(void *pvParameters)
     start_webserver();
 
     // Start the DNS server that will redirect all queries to the softAP IP
-    esp_log_level_set("example_dns_redirect_server", ESP_LOG_NONE);
+    esp_log_level_set("example_dns_redirect_server", ESP_LOG_NONE); // turn off DNS server logging
     dns_server_config_t dns_config = DNS_SERVER_CONFIG_SINGLE("*" /* all A queries */, "WIFI_AP_DEF" /* softAP netif ID */);
     start_dns_server(&dns_config);
-    vTaskSuspend(NULL);
+    vTaskSuspend(NULL); // There is only esp_restart(); (and variables in memory may cause undefined behavior)
 }
 
 static int s_retry_num = 0; // Retry attempts counter
@@ -233,7 +230,7 @@ static void sta_wifi_event_handler(void* arg, esp_event_base_t event_base, int32
     switch (event_id)
     {
     case WIFI_EVENT_STA_START:
-        ESP_LOGI(TAG, "WIFI iface up. Connecting ...");
+        ESP_LOGI(TAG, "Wi-Fi iface up. Connecting ...");
         esp_wifi_connect();
         break;
 
@@ -245,10 +242,10 @@ static void sta_wifi_event_handler(void* arg, esp_event_base_t event_base, int32
     case WIFI_EVENT_STA_DISCONNECTED:
         s_retry_num++;
         if ( s_retry_num > 5 ) {
-            ESP_LOGE(TAG, "Connection attempt failed. Starting WIFI Provisioning AP.");
-            xTaskCreate(wifi_init_softap, "start_softap", 4096, arg, (tskIDLE_PRIORITY + 2), NULL); // Start WIFI SoftAP
+            ESP_LOGE(TAG, "Connection attempt failed. Starting Wi-Fi Provisioning AP.");
+            xTaskCreate(wifi_init_softap, "start_softap", 4096, arg, (tskIDLE_PRIORITY + 2), NULL); // Start Wi-Fi SoftAP
         } else {
-            ESP_LOGI(TAG, "Connection attempt %d of 5 failed, retry in 3 seconds to connect to the AP.", s_retry_num);
+            ESP_LOGI(TAG, "Connection attempt %d of 5 is failed, retry in 3 seconds to connect to the AP.", s_retry_num);
             vTaskDelay(3000 / portTICK_PERIOD_MS);
             esp_wifi_connect();
         }
@@ -265,8 +262,8 @@ static void sta_ip_event_handler(void* arg, esp_event_base_t event_base, int32_t
     switch (event_id)
     {
     case IP_EVENT_STA_GOT_IP:
-        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAG, "Got IPv4. Address: " IPSTR, IP2STR(&event->ip_info.ip));
+        ip_event_got_ip_t* event = (ip_event_got_ip_t*)event_data;
+        ESP_LOGI(TAG, "Got IPv4 address: " IPSTR, IP2STR(&event->ip_info.ip));
         xSemaphoreGive(s_semph_get_ip_addrs);
         break;
 
@@ -296,7 +293,7 @@ void wifi_provision_care(char *ap_ssid_name)
     char ap_ssid_name_copy[33];
     strncpy((char *)ap_ssid_name_copy, ap_ssid_name, sizeof(ap_ssid_name_copy));
 
-    ESP_LOGI(TAG, "WIFI interface init.");
+    ESP_LOGI(TAG, "Wi-Fi interface init.");
 
     // Secondary NVS init is fine
     esp_err_t err = nvs_flash_init();
@@ -319,7 +316,7 @@ void wifi_provision_care(char *ap_ssid_name)
     wifi_config_t wifi_config;
     if (esp_wifi_get_config(WIFI_IF_STA, &wifi_config) != ESP_OK) {
         // configuration not available, report error to restart provisioning
-        ESP_LOGE(TAG, "Error (%s) reading WIFI Credentials. Starting WIFI Provisioning AP.", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error (%s) reading Wi-Fi Credentials. Starting Wi-Fi provisioning AP.", esp_err_to_name(err));
         vSemaphoreDelete(s_semph_get_ip_addrs);
         vSemaphoreDelete(s_semph_get_ip6_addrs);
         wifi_init_softap(ap_ssid_name_copy); // Start WIFI SoftAP
@@ -327,13 +324,13 @@ void wifi_provision_care(char *ap_ssid_name)
     }
     if ( strlen((const char *) wifi_config.sta.ssid ) == 0 ) {
         // configuration not available, report error to restart provisioning
-        ESP_LOGE(TAG, "WIFI SSID empty. Starting WIFI Provisioning AP.");
+        ESP_LOGE(TAG, "Wi-Fi SSID empty. Starting Wi-Fi provisioning AP.");
         vSemaphoreDelete(s_semph_get_ip_addrs);
         vSemaphoreDelete(s_semph_get_ip6_addrs);
         wifi_init_softap(ap_ssid_name_copy); // Start WIFI SoftAP
         return;
     }
-    ESP_LOGI(TAG, "Wi-Fi credentials loaded. SSID:'%s' Password:*", wifi_config.sta.ssid);
+    ESP_LOGI(TAG, "Wi-Fi credentials loaded. SSID:'%s' Password:hidden", wifi_config.sta.ssid);
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_wifi_event_handler, ap_ssid_name_copy));
@@ -342,7 +339,7 @@ void wifi_provision_care(char *ap_ssid_name)
 
     xSemaphoreTake(s_semph_get_ip_addrs, portMAX_DELAY);
     xSemaphoreTake(s_semph_get_ip6_addrs, portMAX_DELAY);
-    ESP_LOGI(TAG, "WIFI interface up and ready");
+    ESP_LOGI(TAG, "Wi-Fi interface up and ready");
     vSemaphoreDelete(s_semph_get_ip_addrs);
     vSemaphoreDelete(s_semph_get_ip6_addrs);
     ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_wifi_event_handler));
