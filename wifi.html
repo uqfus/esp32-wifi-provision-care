@@ -337,16 +337,16 @@ td {
                 var xhttp = new XMLHttpRequest();
                 xhttp.onload = function () {
                     if (xhttp.status == 200) {
-                        document.getElementById("ota-status").value = xhttp.responseText;
+                        document.getElementById("ota-status").textContent = xhttp.responseText;
                     } else if (xhttp.status == 0) {
-                        document.getElementById("ota-status").value = 'Error. Unsent.';
+                        document.getElementById("ota-status").textContent = 'Error. Unsent.';
                     } else {
                         alert(xhttp.status + ' Error!\n' + xhttp.responseText);
                     }
                 };
                 xhttp.onprogress = function () {
                     var percent = Math.round( 100 * xhttp.loaded / xhttp.total );
-                    document.getElementById("ota-status").value = 'Progress ' + percent + '%';
+                    document.getElementById("ota-status").textContent = 'Progress ' + percent + '%';
                 };
 
                 xhttp.open('POST', '/updateota', true);
