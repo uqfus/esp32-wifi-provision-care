@@ -336,16 +336,16 @@ td {
                 var fwfile = fileInput[0];
                 var xhttp = new XMLHttpRequest();
                 xhttp.onload = function () {
-                    if (xhttp.status == 200) {
-                        document.getElementById("ota-status").textContent = xhttp.responseText;
-                    } else if (xhttp.status == 0) {
-                        document.getElementById("ota-status").textContent = 'Error. Unsent.';
+                    if (this.status == 200) {
+                        document.getElementById("ota-status").textContent = this.responseText;
+                    } else if (this.status == 0) {
+                        document.getElementById("ota-status").textContent = 'Upload error.';
                     } else {
-                        alert(xhttp.status + ' Error!\n' + xhttp.responseText);
+                        alert(this.status + ' Error!\n' + this.responseText);
                     }
                 };
-                xhttp.onprogress = function () {
-                    var percent = Math.round( 100 * xhttp.loaded / xhttp.total );
+                xhttp.upload.onprogress = function (event) {
+                    var percent = Math.round( 100 * event.loaded / event.total );
                     document.getElementById("ota-status").textContent = 'Progress ' + percent + '%';
                 };
 
