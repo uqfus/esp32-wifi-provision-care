@@ -10,6 +10,7 @@
 #include "esp_err.h"
 #include "esp_wifi.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "esp_mac.h"
 #include "nvs_flash.h"
 #include "esp_http_server.h"
@@ -149,6 +150,7 @@ static esp_err_t scanap_get_handler(httpd_req_t *req)
 
 // todo CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE handling
 // HTTP /updateota - Wi-Fi page
+#define BUFSIZE 8192
 static esp_err_t updateota_post_handler(httpd_req_t *req)
 {
     esp_err_t err;
@@ -164,7 +166,7 @@ static esp_err_t updateota_post_handler(httpd_req_t *req)
                  configured->address, running->address);
         ESP_LOGW(TAG, "(This can happen if either the OTA boot data or preferred boot image become corrupted somehow.)");
     }
-    esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
+    const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
     if ( req->content_len > update_partition->size ) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Firmware too big.");
         return ESP_FAIL;
@@ -179,14 +181,13 @@ static esp_err_t updateota_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    /* Retrieve the pointer to scratch buffer for temporary storage */
-    char *buf = ((struct file_server_data *)req->user_ctx)->scratch;
+    char buf[BUFSIZE];
     int received;
     int remaining = req->content_len;
 
     while (remaining > 0) {
         ESP_LOGI(TAG, "Remaining size : %d", remaining);
-        if ( (received = httpd_req_recv(req, buf, MIN(remaining, SCRATCH_BUFSIZE))) <= 0 ) {
+        if ( (received = httpd_req_recv(req, buf, (remaining > BUFSIZE ? BUFSIZE : remaining) )) <= 0 ) {
             if (received == HTTPD_SOCK_ERR_TIMEOUT) {
                 /* Retry if timeout occurred */
                 continue;
