@@ -181,7 +181,7 @@ static esp_err_t updateota_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    char buf[BUFSIZE];
+    char *buf = malloc(BUFSIZE+1);
     int received;
     int remaining = req->content_len;
 
@@ -224,6 +224,7 @@ static esp_err_t updateota_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
+    free(buf);
     ESP_LOGI(TAG, "Restart to new firmware.");
     esp_restart();
     return ESP_OK;

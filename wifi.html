@@ -335,7 +335,7 @@ td {
                 document.getElementById("firmware").disabled = true;
                 var fwfile = fileInput[0];
                 var xhttp = new XMLHttpRequest();
-                 xhttp.onload = function () {
+                xhttp.onload = function () {
                     if (xhttp.status == 200) {
                         document.getElementById("ota-status").value = xhttp.responseText;
                     } else if (xhttp.status == 0) {
