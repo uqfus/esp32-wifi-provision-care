@@ -5,7 +5,7 @@ If ESP32 has no saved credentials or ESP32 fails to connect Wi-Fi
 esp32-wifi-provision-care spawns Wi-Fi Access Point with captive portal.
 
 Wi-Fi provisioning page shows Wi-Fi routers near to ESP32.
-Povisioning page allows upload new firmware "over the air".
+Provisioning page allows upload new firmware "over the air".
 
 ![1](assets/img1.png) ![2](assets/img2.png) ![3](assets/img3.png) ![4](assets/img4.png)
 
