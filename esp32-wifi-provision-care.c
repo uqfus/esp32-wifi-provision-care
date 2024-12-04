@@ -148,9 +148,20 @@ static esp_err_t scanap_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+void esp_restart_after_3sec_task( void *param )
+{
+    vTaskDelay( 3000 / portTICK_PERIOD_MS );
+    esp_restart();
+}
+// Dealyed restart. Give some time to httpd server.
+void esp_restart_after_3sec(void)
+{
+    xTaskCreate(esp_restart_after_3sec_task, "delayed_restart", 4096, NULL, tskIDLE_PRIORITY, NULL);
+}
+
 // todo CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE handling
 // HTTP /updateota - Wi-Fi page
-#define BUFSIZE 8192
+#define BUFSIZE 5800 // 5760 - receive chunk, got from httpd server logs
 esp_err_t updateota_post_handler(httpd_req_t *req)
 {
     esp_err_t err;
@@ -166,10 +177,15 @@ esp_err_t updateota_post_handler(httpd_req_t *req)
                  configured->address, running->address);
         ESP_LOGW(TAG, "(This can happen if either the OTA boot data or preferred boot image become corrupted somehow.)");
     }
+    
+    if ( req->content_len == 0 ) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Firmware too short.");
+        return ESP_OK;
+    }
     const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
     if ( req->content_len > update_partition->size ) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Firmware too big.");
-        return ESP_FAIL;
+        return ESP_OK;
     }
     ESP_LOGI(TAG, "Begin writing %d bytes firmware to partition '%s'.", req->content_len,  update_partition->label);
 
@@ -178,7 +194,7 @@ esp_err_t updateota_post_handler(httpd_req_t *req)
         ESP_LOGE(TAG, "esp_ota_begin failed (%s)", esp_err_to_name(err));
         esp_ota_abort(update_handle);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_begin failed.");
-        return ESP_FAIL;
+        return ESP_OK;
     }
 
     char *buf = malloc(BUFSIZE+1);
@@ -195,7 +211,7 @@ esp_err_t updateota_post_handler(httpd_req_t *req)
             esp_ota_abort(update_handle);
             free(buf);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to receive firmware.");
-            return ESP_FAIL;
+            return ESP_OK;
         }
 
         err = esp_ota_write( update_handle, (const void *)buf, received);
@@ -203,7 +219,7 @@ esp_err_t updateota_post_handler(httpd_req_t *req)
             esp_ota_abort(update_handle);
             free(buf);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_write failed.");
-            return ESP_FAIL;
+            return ESP_OK;
         }
         remaining -= received;
     }
@@ -212,22 +228,24 @@ esp_err_t updateota_post_handler(httpd_req_t *req)
     err = esp_ota_end(update_handle);
     if (err != ESP_OK) {
         if (err == ESP_ERR_OTA_VALIDATE_FAILED) {
-            ESP_LOGE(TAG, "Image validation failed, image is corrupted");
+            ESP_LOGE(TAG, "Image validation failed, image is corrupted!");
         } else {
             ESP_LOGE(TAG, "esp_ota_end failed (%s)!", esp_err_to_name(err));
         }
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_end failed.");
-        return ESP_FAIL;
+        return ESP_OK;
     }
     err = esp_ota_set_boot_partition(update_partition);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_set_boot_partition failed (%s)!", esp_err_to_name(err));
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_set_boot_partition failed.");
-        return ESP_FAIL;
+        return ESP_OK;
     }
 
     ESP_LOGI(TAG, "Restart to new firmware.");
-    esp_restart();
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_send(req, "Update firmware over the air finished sucessfully.", HTTPD_RESP_USE_STRLEN);
+    esp_restart_after_3sec(); // Give some time to httpd server
     return ESP_OK;
 }
 

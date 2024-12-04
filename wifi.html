@@ -243,7 +243,7 @@ td {
                 </div>
                 <div style='margin: 15px;'>
                     <h2>Upload new firmware over the air.</h2>
-                    <input id='firmware' type="file" style="width:90%;">
+                    <input id='firmware' type="file" style="width:90%;" />
                     <h2 id='ota-status'>Ready.</h2>
                     <hr>
                     <button onclick='javascript:otaUpdate();'>Upload</button>
@@ -328,11 +328,11 @@ td {
             closeErasenvsModal();
         }
         function otaUpdate() {
+            document.getElementById("firmware").disabled = true;
             var fileInput = document.getElementById("firmware").files;
             if (fileInput.length == 0) {
                 alert("No file selected!");
             } else {
-                document.getElementById("firmware").disabled = true;
                 var fwfile = fileInput[0];
                 var xhttp = new XMLHttpRequest();
                 xhttp.onload = function () {
