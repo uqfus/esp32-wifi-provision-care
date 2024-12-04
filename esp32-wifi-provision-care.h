@@ -4,6 +4,8 @@
 extern "C" {
 #endif
 
+#include <esp_http_server.h>
+
 /**
  * @brief  Tries to connect to Wi-Fi Access Point with 
  *         credentials stored in default NVS partition
