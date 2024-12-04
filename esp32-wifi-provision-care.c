@@ -151,7 +151,7 @@ static esp_err_t scanap_get_handler(httpd_req_t *req)
 // todo CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE handling
 // HTTP /updateota - Wi-Fi page
 #define BUFSIZE 8192
-static esp_err_t updateota_post_handler(httpd_req_t *req)
+esp_err_t updateota_post_handler(httpd_req_t *req)
 {
     esp_err_t err;
     /* update handle : set by esp_ota_begin(), must be freed via esp_ota_end() */
@@ -184,7 +184,6 @@ static esp_err_t updateota_post_handler(httpd_req_t *req)
     char *buf = malloc(BUFSIZE+1);
     int received;
     int remaining = req->content_len;
-
     while (remaining > 0) {
         ESP_LOGI(TAG, "Remaining size : %d", remaining);
         if ( (received = httpd_req_recv(req, buf, (remaining > BUFSIZE ? BUFSIZE : remaining) )) <= 0 ) {
@@ -193,7 +192,8 @@ static esp_err_t updateota_post_handler(httpd_req_t *req)
                 continue;
             }
             ESP_LOGE(TAG, "Firmware reception failed!");
-            /* Respond with 500 Internal Server Error */
+            esp_ota_abort(update_handle);
+            free(buf);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to receive firmware.");
             return ESP_FAIL;
         }
@@ -201,11 +201,13 @@ static esp_err_t updateota_post_handler(httpd_req_t *req)
         err = esp_ota_write( update_handle, (const void *)buf, received);
         if (err != ESP_OK) {
             esp_ota_abort(update_handle);
+            free(buf);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_write failed.");
             return ESP_FAIL;
         }
         remaining -= received;
     }
+    free(buf);
 
     err = esp_ota_end(update_handle);
     if (err != ESP_OK) {
@@ -224,7 +226,6 @@ static esp_err_t updateota_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    free(buf);
     ESP_LOGI(TAG, "Restart to new firmware.");
     esp_restart();
     return ESP_OK;
