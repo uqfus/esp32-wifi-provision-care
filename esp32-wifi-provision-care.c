@@ -148,13 +148,13 @@ static esp_err_t scanap_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-void esp_restart_after_3sec_task( void *param )
+static void esp_restart_after_3sec_task( void *param )
 {
     vTaskDelay( 3000 / portTICK_PERIOD_MS );
     esp_restart();
 }
 // Dealyed restart. Give some time to httpd server.
-void esp_restart_after_3sec(void)
+static void esp_restart_after_3sec(void)
 {
     xTaskCreate(esp_restart_after_3sec_task, "delayed_restart", 4096, NULL, tskIDLE_PRIORITY, NULL);
 }
@@ -162,7 +162,7 @@ void esp_restart_after_3sec(void)
 // todo CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE handling
 // HTTP /updateota - Wi-Fi page
 #define BUFSIZE 5800 // 5760 - receive chunk, got from httpd server logs
-esp_err_t updateota_post_handler(httpd_req_t *req)
+esp_err_t wifi_provision_care_updateota_post_handler(httpd_req_t *req)
 {
     esp_err_t err;
     /* update handle : set by esp_ota_begin(), must be freed via esp_ota_end() */
@@ -177,7 +177,7 @@ esp_err_t updateota_post_handler(httpd_req_t *req)
                  configured->address, running->address);
         ESP_LOGW(TAG, "(This can happen if either the OTA boot data or preferred boot image become corrupted somehow.)");
     }
-    
+
     if ( req->content_len == 0 ) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Firmware too short.");
         return ESP_OK;
@@ -270,7 +270,7 @@ static httpd_handle_t start_webserver(void)
         httpd_register_uri_handler(server, &savewifi_uri);
         const httpd_uri_t nvserase_uri =  { .uri = "/nvserase", .method = HTTP_GET, .handler = nvserase_get_handler };
         httpd_register_uri_handler(server, &nvserase_uri);
-        const httpd_uri_t updateota_uri =  { .uri = "/updateota", .method = HTTP_POST, .handler = updateota_post_handler };
+        const httpd_uri_t updateota_uri =  { .uri = "/updateota", .method = HTTP_POST, .handler = wifi_provision_care_updateota_post_handler };
         httpd_register_uri_handler(server, &updateota_uri);
         httpd_register_err_handler(server, HTTPD_404_NOT_FOUND, http_404_error_handler);
     }

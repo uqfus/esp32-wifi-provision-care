@@ -1,0 +1,5 @@
+dependencies:
+  uqfus/esp32-wifi-provision-care:
+    override_path: "../../../"
+  espressif/mdns: "^1.0.3"
+

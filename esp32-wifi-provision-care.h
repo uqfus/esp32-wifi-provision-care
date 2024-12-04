@@ -27,7 +27,7 @@ void wifi_provision_care(char *ap_ssid_name);
  * @param  req httpd_server parameters
  *
  */
-esp_err_t updateota_post_handler(httpd_req_t *req);
+esp_err_t wifi_provision_care_updateota_post_handler(httpd_req_t *req);
 
 #ifdef __cplusplus
 }

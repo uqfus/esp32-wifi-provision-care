@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+    </head>
+    <body>
+        <h1>Upload new firmware</h1>
+        <input id="firmware" type="file" />
+        <button id="upload-button" onclick="javascript:UpdateOTA();">Upload</button>
+    </body>
+    <script>
+        function UpdateOTA() {
+            document.getElementById("upload-button").disabled = true; // Disable Upload button to prevent multiple uploads
+            var fileInput = document.getElementById("firmware").files;
+            if (fileInput.length == 0) {
+                alert("No file selected!");
+            } else {
+                var fwfile = fileInput[0];
+                var xhttp = new XMLHttpRequest();
+                xhttp.onload = function () {
+                    alert( this.responseText );
+                    document.getElementById("upload-button").disabled = false; // Enable Upload button when upload is done
+                };
+                xhttp.open("POST", "/updateota");
+                xhttp.send(fwfile);
+            }
+        }
+    </script>
+</html>
