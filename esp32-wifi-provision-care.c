@@ -152,6 +152,8 @@ static void esp_restart_after_3sec_task( void *param )
 {
     vTaskDelay( 3000 / portTICK_PERIOD_MS );
     esp_restart();
+    // Task functions should never return.
+    vTaskDelete(NULL);
 }
 // Dealyed restart. Give some time to httpd server.
 static void esp_restart_after_3sec(void)
@@ -325,6 +327,8 @@ static void wifi_init_softap(void *pvParameters)
     dns_server_config_t dns_config = DNS_SERVER_CONFIG_SINGLE("*" /* all A queries */, "WIFI_AP_DEF" /* softAP netif ID */);
     start_dns_server(&dns_config);
     vTaskSuspend(NULL); // There is only esp_restart(); (and variables in memory may cause undefined behavior)
+    // Task functions should never return.
+    vTaskDelete(NULL);
 }
 
 static int s_retry_num = 0; // Retry attempts counter
@@ -436,7 +440,7 @@ void wifi_provision_care(char *ap_ssid_name)
     }
     ESP_LOGI(TAG, "Wi-Fi credentials loaded. SSID:'%s' Password:hidden", wifi_config.sta.ssid);
 
-    // Disabling any Wi-Fi power save mode, this allows best throughput
+    // Disabling any Wi-Fi power save mode, this allows best throughput, does not have much impact
 //    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_wifi_event_handler, ap_ssid_name_copy));

@@ -106,7 +106,7 @@ static void wifi_init(void)
     };
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
 
-//    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE)); // Disabling any Wi-Fi power save mode, this allows best throughput
+//    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE)); // Disabling any Wi-Fi power save mode, this allows best throughput, does not have much impact
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());
 
@@ -126,6 +126,10 @@ void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+    // You can choose which method to use while conecting to wifi
+    // Choose one and comment other
+//    wifi_provision_care((char *)TAG);
     wifi_init();
 
     ESP_LOGI(TAG, "Publish mDNS hostname %s.local.", TAG);
@@ -149,5 +153,6 @@ void app_main(void)
             ESP_LOGI(TAG, "- IPv6 address: " IPV6STR ", type: %d", IPV62STR(ip6[j]), ipv6_type);
         }
     }
-
+    // Task functions should never return.
+    vTaskDelete(NULL);
 }
