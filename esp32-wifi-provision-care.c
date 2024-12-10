@@ -152,8 +152,7 @@ static void esp_restart_after_3sec_task( void *param )
 {
     vTaskDelay( 3000 / portTICK_PERIOD_MS );
     esp_restart();
-    // Task functions should never return.
-    vTaskDelete(NULL);
+    vTaskDelete(NULL); // Task functions should never return.
 }
 // Dealyed restart. Give some time to httpd server.
 static void esp_restart_after_3sec(void)
@@ -327,8 +326,7 @@ static void wifi_init_softap(void *pvParameters)
     dns_server_config_t dns_config = DNS_SERVER_CONFIG_SINGLE("*" /* all A queries */, "WIFI_AP_DEF" /* softAP netif ID */);
     start_dns_server(&dns_config);
     vTaskSuspend(NULL); // There is only esp_restart(); (and variables in memory may cause undefined behavior)
-    // Task functions should never return.
-    vTaskDelete(NULL);
+    vTaskDelete(NULL); // Task functions should never return.
 }
 
 static int s_retry_num = 0; // Retry attempts counter

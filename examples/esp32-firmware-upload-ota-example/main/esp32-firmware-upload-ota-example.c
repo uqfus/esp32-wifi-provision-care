@@ -153,6 +153,5 @@ void app_main(void)
             ESP_LOGI(TAG, "- IPv6 address: " IPV6STR ", type: %d", IPV62STR(ip6[j]), ipv6_type);
         }
     }
-    // Task functions should never return.
-    vTaskDelete(NULL);
+    vTaskDelete(NULL); // Task functions should never return.
 }
