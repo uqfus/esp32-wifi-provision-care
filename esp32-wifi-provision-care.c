@@ -27,8 +27,8 @@ static SemaphoreHandle_t s_semph_get_ip6_addrs = NULL;
 // HTTP /favicon.ico
 static esp_err_t favicon_get_handler(httpd_req_t *req)
 {
-    extern const unsigned char favicon_ico_start[] asm("_binary_favicon_ico_start");
-    extern const unsigned char favicon_ico_end[]   asm("_binary_favicon_ico_end");
+    extern const unsigned char favicon_ico_start[] asm("_binary_esp32_wifi_provision_care_favicon_ico_start");
+    extern const unsigned char favicon_ico_end[]   asm("_binary_esp32_wifi_provision_care_favicon_ico_end");
     const size_t favicon_ico_size = (favicon_ico_end - favicon_ico_start);
     httpd_resp_set_type(req, "image/x-icon");
     httpd_resp_send(req, (const char *)favicon_ico_start, favicon_ico_size);
