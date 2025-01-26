@@ -11,10 +11,20 @@ Provisioning page allows upload new firmware "over the air".
 
 How to use.
 
-Append to your idf_component.yml file
+Append to your main/idf_component.yml file
 ```
   esp32-wifi-provision-care:
     git: https://github.com/uqfus/esp32-wifi-provision-care.git
+```
+
+Modify options in your sdkconfig.defaults in project 
+```
+CONFIG_LWIP_MAX_SOCKETS=16
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+```
+Append required ESP-IDF components to main/CMakeLists.txt
+```
+PRIV_REQUIRES esp_netif esp_wifi esp_http_server nvs_flash app_update
 ```
 
 Append code to your project

@@ -19,31 +19,23 @@
 
 static const char *TAG = "esp32-firmware-upload-ota-example";
 
-// HTTP Error (404) Handler - Redirects all requests to /
+// MARK: httpd handlers
+// HTTP Error (404) Handler - Redirects all requests to the /
 static esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
 {
-    // get self IPv4 address
-    esp_netif_ip_info_t ip_info;
-    esp_netif_get_ip_info(esp_netif_get_default_netif(), &ip_info);
-    char ip_addr[16]; // "111.222.111.222"
-    inet_ntoa_r(ip_info.ip.addr, ip_addr, 16);
-    char root_uri[32];
-    sprintf(root_uri, "http://%s/", ip_addr);
-
     httpd_resp_set_status(req, "302 Temporary Redirect");
-    httpd_resp_set_hdr(req, "Location", root_uri);
-    httpd_resp_send(req, "Redirect.", HTTPD_RESP_USE_STRLEN);
-    ESP_LOGI(TAG, "Redirecting to %s", root_uri );
+    httpd_resp_set_hdr(req, "Location", "/");
+    httpd_resp_sendstr(req, "Redirect to the root uri.");
     return ESP_OK;
 }
 
 // HTTP /
 static esp_err_t root_get_handler(httpd_req_t *req)
 {
-    ESP_LOGI(TAG, "Serve root.");
     extern const char wifi_start[] asm("_binary_ota_html_start");
     extern const char wifi_end[] asm("_binary_ota_html_end");
     const uint32_t wifi_len = wifi_end - wifi_start;
+    httpd_resp_set_hdr(req, "Connection", "close");
     httpd_resp_set_type(req, "text/html");
     httpd_resp_send(req, wifi_start, wifi_len);
     return ESP_OK;
@@ -139,7 +131,6 @@ void app_main(void)
     start_webserver();
 
     while(true) {
-        vTaskDelay(60000 / portTICK_PERIOD_MS);
         ESP_LOGI(TAG, "Minimum free heap size: %" PRIu32 " bytes", esp_get_minimum_free_heap_size());
 
         esp_netif_ip_info_t ip_info;
@@ -152,6 +143,7 @@ void app_main(void)
             esp_ip6_addr_type_t ipv6_type = esp_netif_ip6_get_addr_type(&(ip6[j]));
             ESP_LOGI(TAG, "- IPv6 address: " IPV6STR ", type: %d", IPV62STR(ip6[j]), ipv6_type);
         }
+        vTaskDelay(60000 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL); // Task functions should never return.
 }

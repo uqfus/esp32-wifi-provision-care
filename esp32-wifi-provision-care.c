@@ -24,6 +24,7 @@ static esp_netif_t *s_wifi_sta_netif = NULL;
 static SemaphoreHandle_t s_semph_get_ip_addrs = NULL;
 static SemaphoreHandle_t s_semph_get_ip6_addrs = NULL;
 
+// MARK: httpd handlers
 // HTTP /favicon.ico
 static esp_err_t favicon_get_handler(httpd_req_t *req)
 {
@@ -46,6 +47,7 @@ static esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
     sprintf(root_uri, "http://%s/wifi", ip_addr);
 
     httpd_resp_set_status(req, "302 Temporary Redirect");
+    httpd_resp_set_hdr(req, "Connection", "close");
     httpd_resp_set_hdr(req, "Location", root_uri);
     // iOS requires content in the response to detect a captive portal, simply redirecting is not sufficient.
     httpd_resp_send(req, "Redirect to the captive portal.", HTTPD_RESP_USE_STRLEN);
@@ -62,6 +64,7 @@ static esp_err_t root_get_handler(httpd_req_t *req)
     const uint32_t wifi_len = wifi_end - wifi_start;
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    httpd_resp_set_hdr(req, "Connection", "close");
     httpd_resp_send(req, wifi_start, wifi_len);
     return ESP_OK;
 }
@@ -73,6 +76,7 @@ static esp_err_t nvserase_get_handler(httpd_req_t *req)
     ESP_ERROR_CHECK(nvs_flash_erase());
     ESP_ERROR_CHECK(nvs_flash_init());
     httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Connection", "close");
     httpd_resp_send(req, "Perform NVS full erase.", HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
@@ -83,22 +87,28 @@ static esp_err_t savewifi_get_handler(httpd_req_t *req)
     char  *buf = NULL;
     size_t buf_len;
     buf_len = httpd_req_get_url_query_len(req) + 1;
-    if (buf_len > 1) {
+    if (buf_len > 1)
+    {
         buf = malloc(buf_len);
-        if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
+        if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK)
+        {
             char param[65];
             wifi_config_t wifi_cfg = { 0 };
-            if ( httpd_query_key_value( buf, "ssid", param, sizeof(param) ) == ESP_OK ) {
+            if ( httpd_query_key_value( buf, "ssid", param, sizeof(param) ) == ESP_OK )
+            {
                 strncpy( (char *)wifi_cfg.sta.ssid, param, sizeof(wifi_cfg.sta.ssid) );
             }
-            if ( httpd_query_key_value( buf, "password", param, sizeof(param) ) == ESP_OK ) {
+            if ( httpd_query_key_value( buf, "password", param, sizeof(param) ) == ESP_OK )
+            {
                 strncpy( (char *)wifi_cfg.sta.password, param, sizeof(wifi_cfg.sta.password) );
             }
 
-            if ( strlen((char *)wifi_cfg.sta.ssid) > 0 && strlen((char *)wifi_cfg.sta.password) > 0 ) {
+            if ( strlen((char *)wifi_cfg.sta.ssid) > 0 && strlen((char *)wifi_cfg.sta.password) > 0 )
+            {
                 httpd_resp_set_type(req, "text/html");
                 if (esp_wifi_set_storage(WIFI_STORAGE_FLASH) == ESP_OK &&
-                        esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg) == ESP_OK) {
+                        esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg) == ESP_OK)
+                {
                     ESP_LOGI(TAG, "Wi-Fi settings saved, SSID: '%s', password: '%s'.", (char *)wifi_cfg.sta.ssid, (char *)wifi_cfg.sta.password );
                     httpd_resp_send(req, "Wi-Fi settings saved.", HTTPD_RESP_USE_STRLEN);
                 } else {
@@ -114,6 +124,7 @@ static esp_err_t savewifi_get_handler(httpd_req_t *req)
     }
 
     httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Connection", "close");
     httpd_resp_send(req, "Error. Wi-Fi settings incorrect.", HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
@@ -133,7 +144,8 @@ static esp_err_t scanap_get_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
     cJSON *fld = NULL;
     cJSON *root = cJSON_CreateArray();
-    for (int i = 0; i < number; i++) {
+    for (int i = 0; i < number; i++)
+    {
         ESP_LOGI(TAG, "SSID %s RSSI %d CHANNEL %d", ap_info[i].ssid, ap_info[i].rssi, ap_info[i].primary);
         cJSON_AddItemToArray(root, fld = cJSON_CreateObject());
         cJSON_AddStringToObject(fld, "ssid", (char *)ap_info[i].ssid);
@@ -142,6 +154,7 @@ static esp_err_t scanap_get_handler(httpd_req_t *req)
     }
 
     const char *scanap = cJSON_Print(root);
+    httpd_resp_set_hdr(req, "Connection", "close");
     httpd_resp_sendstr(req, scanap);
     free((void *)scanap);
     cJSON_Delete(root);
@@ -160,6 +173,7 @@ static void esp_restart_after_3sec(void)
     xTaskCreate(esp_restart_after_3sec_task, "delayed_restart", 4096, NULL, tskIDLE_PRIORITY, NULL);
 }
 
+// MARK: ota handler
 // todo CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE handling
 // HTTP /updateota - Wi-Fi page
 #define BUFSIZE 5800 // 5760 - receive chunk, got from httpd server logs
@@ -173,25 +187,29 @@ esp_err_t wifi_provision_care_updateota_post_handler(httpd_req_t *req)
 
     const esp_partition_t *configured = esp_ota_get_boot_partition();
     const esp_partition_t *running = esp_ota_get_running_partition();
-    if (configured != running) {
+    if (configured != running)
+    {
         ESP_LOGW(TAG, "Configured OTA boot partition at offset 0x%08"PRIx32", but running from offset 0x%08"PRIx32,
                  configured->address, running->address);
         ESP_LOGW(TAG, "(This can happen if either the OTA boot data or preferred boot image become corrupted somehow.)");
     }
 
-    if ( req->content_len == 0 ) {
+    if ( req->content_len == 0 )
+    {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Firmware too short.");
         return ESP_OK;
     }
     const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
-    if ( req->content_len > update_partition->size ) {
+    if ( req->content_len > update_partition->size )
+    {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Firmware too big.");
         return ESP_OK;
     }
     ESP_LOGI(TAG, "Begin writing %d bytes firmware to partition '%s'.", req->content_len,  update_partition->label);
 
     err = esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &update_handle);
-    if (err != ESP_OK) {
+    if (err != ESP_OK)
+    {
         ESP_LOGE(TAG, "esp_ota_begin failed (%s)", esp_err_to_name(err));
         esp_ota_abort(update_handle);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_begin failed.");
@@ -201,10 +219,13 @@ esp_err_t wifi_provision_care_updateota_post_handler(httpd_req_t *req)
     char *buf = malloc(BUFSIZE+1);
     int received;
     int remaining = req->content_len;
-    while (remaining > 0) {
+    while (remaining > 0)
+    {
         ESP_LOGI(TAG, "Remaining size : %d", remaining);
-        if ( (received = httpd_req_recv(req, buf, (remaining > BUFSIZE ? BUFSIZE : remaining) )) <= 0 ) {
-            if (received == HTTPD_SOCK_ERR_TIMEOUT) {
+        if ( (received = httpd_req_recv(req, buf, (remaining > BUFSIZE ? BUFSIZE : remaining) )) <= 0 )
+        {
+            if (received == HTTPD_SOCK_ERR_TIMEOUT)
+            {
                 /* Retry if timeout occurred */
                 continue;
             }
@@ -216,7 +237,8 @@ esp_err_t wifi_provision_care_updateota_post_handler(httpd_req_t *req)
         }
 
         err = esp_ota_write( update_handle, (const void *)buf, received);
-        if (err != ESP_OK) {
+        if (err != ESP_OK)
+        {
             esp_ota_abort(update_handle);
             free(buf);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_write failed.");
@@ -227,8 +249,10 @@ esp_err_t wifi_provision_care_updateota_post_handler(httpd_req_t *req)
     free(buf);
 
     err = esp_ota_end(update_handle);
-    if (err != ESP_OK) {
-        if (err == ESP_ERR_OTA_VALIDATE_FAILED) {
+    if (err != ESP_OK)
+    {
+        if (err == ESP_ERR_OTA_VALIDATE_FAILED)
+        {
             ESP_LOGE(TAG, "Image validation failed, image is corrupted!");
         } else {
             ESP_LOGE(TAG, "esp_ota_end failed (%s)!", esp_err_to_name(err));
@@ -237,7 +261,8 @@ esp_err_t wifi_provision_care_updateota_post_handler(httpd_req_t *req)
         return ESP_OK;
     }
     err = esp_ota_set_boot_partition(update_partition);
-    if (err != ESP_OK) {
+    if (err != ESP_OK)
+    {
         ESP_LOGE(TAG, "esp_ota_set_boot_partition failed (%s)!", esp_err_to_name(err));
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_set_boot_partition failed.");
         return ESP_OK;
@@ -250,6 +275,7 @@ esp_err_t wifi_provision_care_updateota_post_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// MARK: httpd start
 static httpd_handle_t start_webserver(void)
 {
     httpd_handle_t server = NULL;
@@ -259,7 +285,8 @@ static httpd_handle_t start_webserver(void)
 
     // Start the httpd server
     ESP_LOGI(TAG, "Starting http server on port: %d", config.server_port);
-    if (httpd_start(&server, &config) == ESP_OK) {
+    if (httpd_start(&server, &config) == ESP_OK)
+    {
         // Set URI handlers
         const httpd_uri_t favicon_uri = { .uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_get_handler };
         httpd_register_uri_handler(server, &favicon_uri);
@@ -278,6 +305,7 @@ static httpd_handle_t start_webserver(void)
     return server;
 }
 
+// MARK: SoftAP start
 // Switch Wi-FI from STA mode to STA+SoftAP mode. Start Wi-Fi provisioning with captive portal.
 static void wifi_init_softap(void *pvParameters)
 {
@@ -295,7 +323,8 @@ static void wifi_init_softap(void *pvParameters)
             .max_connection = 4,
         },
     };
-    if ( pvParameters != NULL && strlen( (char *)pvParameters ) > 0 ) {
+    if ( pvParameters != NULL && strlen( (char *)pvParameters ) > 0 )
+    {
         // Open SoftAP SSID with provided name
         strncpy((char *)wifi_config.ap.ssid, (char *)pvParameters, sizeof(wifi_config.ap.ssid));
     } else {
@@ -347,7 +376,8 @@ static void sta_wifi_event_handler(void* arg, esp_event_base_t event_base, int32
 
     case WIFI_EVENT_STA_DISCONNECTED:
         s_retry_num++;
-        if ( s_retry_num > 5 ) {
+        if ( s_retry_num > 5 )
+        {
             ESP_LOGE(TAG, "Connection attempt failed. Starting Wi-Fi Provisioning AP.");
             xTaskCreate(wifi_init_softap, "start_softap", 4096, arg, (tskIDLE_PRIORITY + 2), NULL); // Start Wi-Fi SoftAP
         } else {
@@ -385,25 +415,29 @@ static void sta_ip_event_handler(void* arg, esp_event_base_t event_base, int32_t
     }
 }
 
+// MARK: wifi_prov_care
 void wifi_provision_care(char *ap_ssid_name)
 {
     s_semph_get_ip_addrs = xSemaphoreCreateBinary();
-    if (s_semph_get_ip_addrs == NULL) {
+    if (s_semph_get_ip_addrs == NULL)
+    {
         return ;
     }
     s_semph_get_ip6_addrs = xSemaphoreCreateBinary();
-    if (s_semph_get_ip6_addrs == NULL) {
+    if (s_semph_get_ip6_addrs == NULL)
+    {
         vSemaphoreDelete(s_semph_get_ip_addrs);
         return ;
     }
-    char ap_ssid_name_copy[33];
+    char ap_ssid_name_copy[32];
     strncpy((char *)ap_ssid_name_copy, ap_ssid_name, sizeof(ap_ssid_name_copy));
 
     ESP_LOGI(TAG, "Wi-Fi interface init.");
 
     // Secondary NVS init is fine
     esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
         // NVS partition was truncated and needs to be erased
         ESP_ERROR_CHECK(nvs_flash_erase());
         // Retry nvs_flash_init
@@ -419,8 +453,10 @@ void wifi_provision_care(char *ap_ssid_name)
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_FLASH));
 
+    // load Wi-Fi config from NVS
     wifi_config_t wifi_config;
-    if (esp_wifi_get_config(WIFI_IF_STA, &wifi_config) != ESP_OK) {
+    if (esp_wifi_get_config(WIFI_IF_STA, &wifi_config) != ESP_OK)
+    {
         // configuration not available, report error to restart provisioning
         ESP_LOGE(TAG, "Error (%s) reading Wi-Fi Credentials. Starting Wi-Fi provisioning AP.", esp_err_to_name(err));
         vSemaphoreDelete(s_semph_get_ip_addrs);
@@ -428,7 +464,8 @@ void wifi_provision_care(char *ap_ssid_name)
         wifi_init_softap(ap_ssid_name_copy); // Start WIFI SoftAP
         return;
     }
-    if ( strlen((const char *) wifi_config.sta.ssid ) == 0 ) {
+    if ( strlen((const char *) wifi_config.sta.ssid ) == 0 )
+    {
         // configuration not available, report error to restart provisioning
         ESP_LOGE(TAG, "Wi-Fi SSID empty. Starting Wi-Fi provisioning AP.");
         vSemaphoreDelete(s_semph_get_ip_addrs);
@@ -438,7 +475,7 @@ void wifi_provision_care(char *ap_ssid_name)
     }
     ESP_LOGI(TAG, "Wi-Fi credentials loaded. SSID:'%s' Password:hidden", wifi_config.sta.ssid);
 
-    // Disabling any Wi-Fi power save mode, this allows best throughput, does not have much impact
+    // Disabling any Wi-Fi power save mode, this allows best throughput, but does not have much impact
 //    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_wifi_event_handler, ap_ssid_name_copy));

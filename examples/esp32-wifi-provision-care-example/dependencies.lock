@@ -1,0 +1,35 @@
+dependencies:
+  dns_server:
+    dependencies: []
+    source:
+      path: C:\Users\root\esp\v5.3.1\esp-idf\examples\protocols\http_server\captive_portal\components\dns_server
+      type: local
+    version: '*'
+  espressif/mdns:
+    component_hash: d439c8c9f4a029f521fc772f5a1376af7972ffbad7ff353eff58d98258696633
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.5.1
+  idf:
+    source:
+      type: idf
+    version: 5.3.1
+  uqfus/esp32-wifi-provision-care:
+    dependencies:
+    - name: dns_server
+      path: ${IDF_PATH}\examples\protocols\http_server\captive_portal\components\dns_server
+    source:
+      path: C:\Users\root\Documents\Projects\esp32-wifi-provision-care
+      type: local
+    version: '*'
+direct_dependencies:
+- espressif/mdns
+- uqfus/esp32-wifi-provision-care
+manifest_hash: 3fb00c0c520c8e12c3bfa599964a0c6140c34857ee832be4ac71392ae874c76f
+target: esp32
+version: 2.0.0

@@ -12,7 +12,8 @@ extern "C" {
  *         on success just return
  *         on error spawns SoftAP with captive portal
  *
- * @param  ap_ssid_name Wi-Fi AP SSID name if empty or NULL use "esp32-wifi-provision-care-XXXX"
+ * @param  ap_ssid_name[32] Wi-Fi AP SSID name NULL terminated.
+ *         If empty or NULL AP name set to "esp32-wifi-provision-care-XXXX" XXXX - esp32 MAC addr last digits.
  *
  */
 void wifi_provision_care(char *ap_ssid_name);
