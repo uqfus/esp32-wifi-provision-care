@@ -485,8 +485,9 @@ void wifi_provision_care(char *ap_ssid_name)
     xSemaphoreTake(s_semph_get_ip_addrs, portMAX_DELAY);
     xSemaphoreTake(s_semph_get_ip6_addrs, portMAX_DELAY);
     ESP_LOGI(TAG, "Wi-Fi interface up and ready");
+// Keep WIFI_EVENT handler registered. Needed for Wi-Fi reconnect.
+//    ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_wifi_event_handler));
+    ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT,   ESP_EVENT_ANY_ID, &sta_ip_event_handler));
     vSemaphoreDelete(s_semph_get_ip_addrs);
     vSemaphoreDelete(s_semph_get_ip6_addrs);
-    ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_wifi_event_handler));
-    ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT,   ESP_EVENT_ANY_ID, &sta_ip_event_handler));
 }
