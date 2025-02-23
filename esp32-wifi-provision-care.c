@@ -22,7 +22,7 @@
 static const char *TAG = "esp32-wifi-provision-care";
 static esp_netif_t *s_wifi_sta_netif = NULL;
 static SemaphoreHandle_t s_semph_get_ip_addrs = NULL;
-static SemaphoreHandle_t s_semph_get_ip6_addrs = NULL;
+char   s_ap_ssid_name_copy[32];
 
 // MARK: httpd handlers
 // HTTP /favicon.ico
@@ -170,7 +170,19 @@ static void esp_restart_after_3sec_task( void *param )
 // Dealyed restart. Give some time to httpd server.
 static void esp_restart_after_3sec(void)
 {
-    xTaskCreate(esp_restart_after_3sec_task, "delayed_restart", 4096, NULL, tskIDLE_PRIORITY, NULL);
+    xTaskCreate(esp_restart_after_3sec_task, "delayed_restart_3s", 4096, NULL, tskIDLE_PRIORITY, NULL);
+}
+
+static void esp_restart_after_10min_task( void *param )
+{
+    vTaskDelay( 10*60*1000 / portTICK_PERIOD_MS );
+    esp_restart();
+    vTaskDelete(NULL); // Task functions should never return.
+}
+// Dealyed restart. Try to reconnect with stored credentials.
+static void esp_restart_after_10min(void)
+{
+    xTaskCreate(esp_restart_after_10min_task, "delayed_restart_10m", 4096, NULL, tskIDLE_PRIORITY, NULL);
 }
 
 // MARK: ota handler
@@ -314,6 +326,7 @@ static void wifi_init_softap(void *pvParameters)
 
     // Initialize SoftAP with default config
     esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
+    assert(ap_netif != NULL);
 
     wifi_config_t wifi_config = {
         .ap = {
@@ -354,6 +367,7 @@ static void wifi_init_softap(void *pvParameters)
     esp_log_level_set("example_dns_redirect_server", ESP_LOG_NONE); // turn off DNS server logging
     dns_server_config_t dns_config = DNS_SERVER_CONFIG_SINGLE("*" /* all A queries */, "WIFI_AP_DEF" /* softAP netif ID */);
     start_dns_server(&dns_config);
+    esp_restart_after_10min(); // 10min pretty enought for set Wi-Fi AP name and  Wi-Fi password, or try to restart normally
     vTaskSuspend(NULL); // There is only esp_restart(); (and variables in memory may cause undefined behavior)
     vTaskDelete(NULL); // Task functions should never return.
 }
@@ -365,11 +379,14 @@ static void sta_wifi_event_handler(void* arg, esp_event_base_t event_base, int32
     switch (event_id)
     {
     case WIFI_EVENT_STA_START:
-        ESP_LOGI(TAG, "Wi-Fi iface up. Connecting ...");
+        ESP_LOGI(TAG, "Wi-Fi interface up. Connecting ...");
         esp_wifi_connect();
         break;
 
     case WIFI_EVENT_STA_CONNECTED:
+        wifi_event_sta_connected_t *event = (wifi_event_sta_connected_t *)event_data;
+        ESP_LOGI(TAG, "Successfully connected to the AP %s (BSSID: "MACSTR", channel: %d)", event->ssid,
+                 MAC2STR(event->bssid), event->channel);
         s_retry_num = 0;
         esp_netif_create_ip6_linklocal(s_wifi_sta_netif);
         break;
@@ -407,7 +424,6 @@ static void sta_ip_event_handler(void* arg, esp_event_base_t event_base, int32_t
         ip_event_got_ip6_t *event6 = (ip_event_got_ip6_t *)event_data;
         ESP_LOGI(TAG, "Got IPv6 : Interface \"%s\" address: " IPV6STR, esp_netif_get_desc(event6->esp_netif),
              IPV62STR(event6->ip6_info.ip));
-        xSemaphoreGive(s_semph_get_ip6_addrs);
         break;
     
     default:
@@ -419,18 +435,9 @@ static void sta_ip_event_handler(void* arg, esp_event_base_t event_base, int32_t
 void wifi_provision_care(char *ap_ssid_name)
 {
     s_semph_get_ip_addrs = xSemaphoreCreateBinary();
-    if (s_semph_get_ip_addrs == NULL)
-    {
-        return ;
-    }
-    s_semph_get_ip6_addrs = xSemaphoreCreateBinary();
-    if (s_semph_get_ip6_addrs == NULL)
-    {
-        vSemaphoreDelete(s_semph_get_ip_addrs);
-        return ;
-    }
-    char ap_ssid_name_copy[32];
-    strncpy((char *)ap_ssid_name_copy, ap_ssid_name, sizeof(ap_ssid_name_copy));
+    assert(s_semph_get_ip_addrs != NULL);
+
+    strncpy((char *)s_ap_ssid_name_copy, ap_ssid_name, sizeof(s_ap_ssid_name_copy));
 
     ESP_LOGI(TAG, "Wi-Fi interface init.");
 
@@ -448,6 +455,7 @@ void wifi_provision_care(char *ap_ssid_name)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     s_wifi_sta_netif = esp_netif_create_default_wifi_sta();
+    assert(s_wifi_sta_netif != NULL);
     
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -460,8 +468,7 @@ void wifi_provision_care(char *ap_ssid_name)
         // configuration not available, report error to restart provisioning
         ESP_LOGE(TAG, "Error (%s) reading Wi-Fi Credentials. Starting Wi-Fi provisioning AP.", esp_err_to_name(err));
         vSemaphoreDelete(s_semph_get_ip_addrs);
-        vSemaphoreDelete(s_semph_get_ip6_addrs);
-        wifi_init_softap(ap_ssid_name_copy); // Start WIFI SoftAP
+        wifi_init_softap(s_ap_ssid_name_copy); // Start WIFI SoftAP
         return;
     }
     if ( strlen((const char *) wifi_config.sta.ssid ) == 0 )
@@ -469,8 +476,7 @@ void wifi_provision_care(char *ap_ssid_name)
         // configuration not available, report error to restart provisioning
         ESP_LOGE(TAG, "Wi-Fi SSID empty. Starting Wi-Fi provisioning AP.");
         vSemaphoreDelete(s_semph_get_ip_addrs);
-        vSemaphoreDelete(s_semph_get_ip6_addrs);
-        wifi_init_softap(ap_ssid_name_copy); // Start WIFI SoftAP
+        wifi_init_softap(s_ap_ssid_name_copy); // Start WIFI SoftAP
         return;
     }
     ESP_LOGI(TAG, "Wi-Fi credentials loaded. SSID:'%s' Password:hidden", wifi_config.sta.ssid);
@@ -478,16 +484,14 @@ void wifi_provision_care(char *ap_ssid_name)
     // Disabling any Wi-Fi power save mode, this allows best throughput, but does not have much impact
 //    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_wifi_event_handler, ap_ssid_name_copy));
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_wifi_event_handler, s_ap_ssid_name_copy));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,   ESP_EVENT_ANY_ID, &sta_ip_event_handler, NULL));
     ESP_ERROR_CHECK(esp_wifi_start());
 
     xSemaphoreTake(s_semph_get_ip_addrs, portMAX_DELAY);
-    xSemaphoreTake(s_semph_get_ip6_addrs, portMAX_DELAY);
-    ESP_LOGI(TAG, "Wi-Fi interface up and ready");
-// Keep WIFI_EVENT handler registered. Needed for Wi-Fi reconnect.
+    ESP_LOGI(TAG, "Successfully connected to Wi-Fi.");
+// Keep handlers registered. Needed for Wi-Fi reconnect and IPaddress log.
 //    ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_wifi_event_handler));
-    ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT,   ESP_EVENT_ANY_ID, &sta_ip_event_handler));
-    vSemaphoreDelete(s_semph_get_ip_addrs);
-    vSemaphoreDelete(s_semph_get_ip6_addrs);
+//    ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT,   ESP_EVENT_ANY_ID, &sta_ip_event_handler));
+//    vSemaphoreDelete(s_semph_get_ip_addrs);
 }
