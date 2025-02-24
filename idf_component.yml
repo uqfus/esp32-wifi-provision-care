@@ -7,3 +7,6 @@ tags:
  - wifi-manager
  - ota
  - captive-portal
+dependencies:
+  dns_server:
+    path: ${IDF_PATH}\examples\protocols\http_server\captive_portal\components\dns_server
