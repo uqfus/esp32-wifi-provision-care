@@ -354,6 +354,9 @@ static void wifi_init_softap(void *pvParameters)
     IP4_ADDR(&ip_info.gw, 200, 200, 200, 1);
     IP4_ADDR(&ip_info.netmask, 255, 255, 255, 0);
     ESP_ERROR_CHECK(esp_netif_set_ip_info(ap_netif, &ip_info));
+    // set the DHCP option 114
+    char *captiveportal_uri = "http://200.200.200.2/wifi";
+    ESP_ERROR_CHECK(esp_netif_dhcps_option(ap_netif, ESP_NETIF_OP_SET, ESP_NETIF_CAPTIVEPORTAL_URI, captiveportal_uri, strlen(captiveportal_uri)));
     ESP_ERROR_CHECK(esp_netif_dhcps_start(ap_netif));
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA)); // STA -> APSTA
